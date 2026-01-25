@@ -34,10 +34,17 @@ export interface CircuitElement {
   parameterValues?: Record<string, number>;
 }
 
+// Initial state options for qubits: |0⟩, |1⟩, |+⟩, |-⟩, |i⟩, |-i⟩
+export type QubitInitialState = '0' | '1' | '+' | '-' | 'i' | '-i';
+
+// Initial state options for qumodes: vacuum |0⟩ or Fock states |1⟩ to |5⟩
+export type QumodeInitialState = 0 | 1 | 2 | 3 | 4 | 5;
+
 export interface Wire {
   id: string;
   type: 'qubit' | 'qumode';
   index: number;
+  initialState?: QubitInitialState | QumodeInitialState;
 }
 
 export interface CircuitState {

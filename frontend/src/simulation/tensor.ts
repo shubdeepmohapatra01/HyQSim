@@ -9,6 +9,32 @@ import {
 } from './complex';
 import { GATES, Rx, Ry, Rz, CNOT } from './qubit';
 import { displacementMatrix, squeezingMatrix, rotationMatrix } from './qumode';
+import type { Wire, QubitInitialState, QumodeInitialState } from '../types/circuit';
+
+// Get initial state vector for a qubit
+function getQubitInitialStateVector(state: QubitInitialState): StateVector {
+  const SQRT2_INV = 1 / Math.sqrt(2);
+  switch (state) {
+    case '0': return [ONE, ZERO];
+    case '1': return [ZERO, ONE];
+    case '+': return [complex(SQRT2_INV), complex(SQRT2_INV)];
+    case '-': return [complex(SQRT2_INV), complex(-SQRT2_INV)];
+    case 'i': return [complex(SQRT2_INV), complex(0, SQRT2_INV)];
+    case '-i': return [complex(SQRT2_INV), complex(0, -SQRT2_INV)];
+    default: return [ONE, ZERO];
+  }
+}
+
+// Get initial state vector for a qumode (Fock state)
+function getQumodeInitialStateVector(n: QumodeInitialState, fockDim: number): StateVector {
+  const state: StateVector = new Array(fockDim).fill(ZERO);
+  if (n < fockDim) {
+    state[n] = ONE;
+  } else {
+    state[0] = ONE; // Fallback to vacuum if n >= fockDim
+  }
+  return state;
+}
 
 export interface TensorState {
   // Full state vector in tensor product space
@@ -26,39 +52,77 @@ export interface SubsystemInfo {
   offset: number;     // Position in subsystem list (0-indexed)
 }
 
-// Initialize a tensor product state with all subsystems in ground state
+// Initialize a tensor product state with specified initial states
 export function initTensorState(
-  qubitWireIndices: number[],
-  qumodeWireIndices: number[],
+  wires: Wire[],
   fockDim: number
 ): TensorState {
   const subsystems: SubsystemInfo[] = [];
+  const qubitWires: Wire[] = [];
+  const qumodeWires: Wire[] = [];
+
+  // Separate qubits and qumodes, preserving their wire indices
+  for (let i = 0; i < wires.length; i++) {
+    if (wires[i].type === 'qubit') {
+      qubitWires.push({ ...wires[i], index: i }); // Store original wire index
+    } else {
+      qumodeWires.push({ ...wires[i], index: i });
+    }
+  }
 
   // Add qubits first, then qumodes
   let offset = 0;
-  for (const wireIndex of qubitWireIndices) {
+  const wireIndexMap: { wireIndex: number; initialState: StateVector }[] = [];
+
+  for (const wire of qubitWires) {
+    const wireIndex = wires.indexOf(wire) >= 0 ? wires.indexOf(wire) : wire.index;
     subsystems.push({
       type: 'qubit',
       wireIndex,
       dim: 2,
       offset: offset++,
     });
+    const initialState = (wire.initialState as QubitInitialState) || '0';
+    wireIndexMap.push({ wireIndex, initialState: getQubitInitialStateVector(initialState) });
   }
-  for (const wireIndex of qumodeWireIndices) {
+
+  for (const wire of qumodeWires) {
+    const wireIndex = wires.indexOf(wire) >= 0 ? wires.indexOf(wire) : wire.index;
     subsystems.push({
       type: 'qumode',
       wireIndex,
       dim: fockDim,
       offset: offset++,
     });
+    const initialState = (wire.initialState as QumodeInitialState) ?? 0;
+    wireIndexMap.push({ wireIndex, initialState: getQumodeInitialStateVector(initialState, fockDim) });
   }
 
   // Total dimension
   const dim = subsystems.reduce((acc, s) => acc * s.dim, 1);
 
-  // Initialize in ground state |00...0⟩
-  const amplitudes: StateVector = new Array(dim).fill(ZERO);
-  amplitudes[0] = ONE;
+  // Build initial state as tensor product of individual states
+  // Start with first subsystem's state
+  let amplitudes: StateVector = wireIndexMap.length > 0 ? [...wireIndexMap[0].initialState] : [ONE];
+
+  // Tensor product with remaining subsystems
+  for (let i = 1; i < wireIndexMap.length; i++) {
+    const nextState = wireIndexMap[i].initialState;
+    const newAmplitudes: StateVector = [];
+    for (const a of amplitudes) {
+      for (const b of nextState) {
+        newAmplitudes.push(mul(a, b));
+      }
+    }
+    amplitudes = newAmplitudes;
+  }
+
+  // Ensure correct dimension
+  if (amplitudes.length !== dim) {
+    console.warn(`Amplitude length ${amplitudes.length} doesn't match expected dim ${dim}`);
+    amplitudes = new Array(dim).fill(ZERO);
+    amplitudes[0] = ONE;
+  }
 
   return { amplitudes, subsystems, dim };
 }

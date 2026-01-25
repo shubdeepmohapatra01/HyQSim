@@ -1,5 +1,25 @@
 import { useState } from 'react';
-import type { Gate, Wire, CircuitElement } from '../types/circuit';
+import type { Gate, Wire, CircuitElement, QubitInitialState, QumodeInitialState } from '../types/circuit';
+
+// Cycle through qubit initial states
+const QUBIT_STATES: QubitInitialState[] = ['0', '1', '+', '-', 'i', '-i'];
+const QUMODE_STATES: QumodeInitialState[] = [0, 1, 2, 3, 4, 5];
+
+function getQubitStateLabel(state: QubitInitialState): string {
+  switch (state) {
+    case '0': return '|0⟩';
+    case '1': return '|1⟩';
+    case '+': return '|+⟩';
+    case '-': return '|-⟩';
+    case 'i': return '|i⟩';
+    case '-i': return '|-i⟩';
+    default: return '|0⟩';
+  }
+}
+
+function getQumodeStateLabel(state: QumodeInitialState): string {
+  return `|${state}⟩`;
+}
 
 interface CircuitCanvasProps {
   wires: Wire[];
@@ -9,6 +29,7 @@ interface CircuitCanvasProps {
   onRemoveWire: (wireId: string) => void;
   onRemoveElement: (elementId: string) => void;
   onElementClick: (element: CircuitElement) => void;
+  onWireInitialStateChange: (wireId: string, newState: QubitInitialState | QumodeInitialState) => void;
   gates: Map<string, Gate>;
 }
 
@@ -20,6 +41,7 @@ export default function CircuitCanvas({
   onRemoveWire,
   onRemoveElement,
   onElementClick,
+  onWireInitialStateChange,
   gates,
 }: CircuitCanvasProps) {
   const [dragOverWire, setDragOverWire] = useState<number | null>(null);
@@ -156,6 +178,20 @@ export default function CircuitCanvas({
     setPendingHybridGate(null);
   };
 
+  const cycleInitialState = (wire: Wire) => {
+    if (wire.type === 'qubit') {
+      const currentState = (wire.initialState as QubitInitialState) || '0';
+      const currentIndex = QUBIT_STATES.indexOf(currentState);
+      const nextIndex = (currentIndex + 1) % QUBIT_STATES.length;
+      onWireInitialStateChange(wire.id, QUBIT_STATES[nextIndex]);
+    } else {
+      const currentState = (wire.initialState as QumodeInitialState) ?? 0;
+      const currentIndex = QUMODE_STATES.indexOf(currentState);
+      const nextIndex = (currentIndex + 1) % QUMODE_STATES.length;
+      onWireInitialStateChange(wire.id, QUMODE_STATES[nextIndex]);
+    }
+  };
+
   const WIRE_HEIGHT = 60;
   const WIRE_START_X = 120;
 
@@ -220,7 +256,7 @@ export default function CircuitCanvas({
                   onMouseEnter={() => setHoveredWire(wire.id)}
                   onMouseLeave={() => setHoveredWire(null)}
                 >
-                  {/* Wire label background */}
+                  {/* Wire label background - clickable to change initial state */}
                   <rect
                     x={0}
                     y={y - 15}
@@ -228,6 +264,8 @@ export default function CircuitCanvas({
                     height={30}
                     fill={bgColor}
                     rx={4}
+                    className="cursor-pointer hover:brightness-125 transition-all"
+                    onClick={() => cycleInitialState(wire)}
                   />
                   {/* Wire label */}
                   <text
@@ -236,8 +274,22 @@ export default function CircuitCanvas({
                     fill={wireColor}
                     fontSize={14}
                     fontWeight="bold"
+                    className="pointer-events-none"
                   >
-                    {isQubit ? `|q${wire.index}⟩` : `|m${wire.index}⟩`}
+                    {isQubit ? `q${wire.index}` : `m${wire.index}`}
+                  </text>
+                  {/* Initial state indicator */}
+                  <text
+                    x={50}
+                    y={y + 5}
+                    fill={wireColor}
+                    fontSize={12}
+                    className="pointer-events-none"
+                  >
+                    {isQubit
+                      ? getQubitStateLabel((wire.initialState as QubitInitialState) || '0')
+                      : getQumodeStateLabel((wire.initialState as QumodeInitialState) ?? 0)
+                    }
                   </text>
 
                   {/* Delete button - only show on hover */}

@@ -3,7 +3,7 @@ import GatePalette from './components/GatePalette';
 import CircuitCanvas from './components/CircuitCanvas';
 import DisplayPanel from './components/DisplayPanel';
 import GateParameterEditor from './components/GateParameterEditor';
-import type { Gate, Wire, CircuitElement, SimulationResult, QubitPostSelection } from './types/circuit';
+import type { Gate, Wire, CircuitElement, SimulationResult, QubitPostSelection, QubitInitialState, QumodeInitialState } from './types/circuit';
 import { ALL_GATES, getDefaultParameters } from './types/circuit';
 import { runSimulation } from './simulation/simulator';
 import { checkBackendHealth, runBackendSimulation } from './api/backend';
@@ -75,6 +75,15 @@ function App() {
     ));
     setSimulationResult(null);
   }, [wires]);
+
+  const handleWireInitialStateChange = useCallback((wireId: string, newState: QubitInitialState | QumodeInitialState) => {
+    setWires((prev) =>
+      prev.map((w) =>
+        w.id === wireId ? { ...w, initialState: newState } : w
+      )
+    );
+    setSimulationResult(null);
+  }, []);
 
   const handleRemoveElement = useCallback((elementId: string) => {
     setElements((prev) => prev.filter((e) => e.id !== elementId));
@@ -237,6 +246,7 @@ function App() {
             onRemoveWire={handleRemoveWire}
             onRemoveElement={handleRemoveElement}
             onElementClick={handleElementClick}
+            onWireInitialStateChange={handleWireInitialStateChange}
             gates={gatesMap}
           />
         </main>

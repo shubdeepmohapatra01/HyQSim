@@ -29,7 +29,7 @@ export function runSimulation(
 ): SimulationResult {
   const startTime = performance.now();
 
-  // Separate wire indices by type
+  // Separate wire indices by type (used for result extraction)
   const qubitWireIndices: number[] = [];
   const qumodeWireIndices: number[] = [];
 
@@ -41,8 +41,8 @@ export function runSimulation(
     }
   }
 
-  // Initialize tensor product state
-  let state = initTensorState(qubitWireIndices, qumodeWireIndices, fockDim);
+  // Initialize tensor product state with custom initial states from wires
+  let state = initTensorState(wires, fockDim);
 
   // Sort elements by position (execution order)
   const sortedElements = sortElementsByPosition(elements);
