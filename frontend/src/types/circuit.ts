@@ -65,6 +65,8 @@ export interface QumodeState {
   // Pre-computed Wigner function (from Python backend)
   wignerData?: number[][];
   wignerRange?: number;
+  // Density matrix for mixed states (browser tensor simulation)
+  densityMatrix?: { re: number; im: number }[][];
 }
 
 export interface SimulationResult {

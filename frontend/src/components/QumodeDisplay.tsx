@@ -25,6 +25,7 @@ export default function QumodeDisplay({
   const meanPhotonNumber = state?.meanPhotonNumber ?? 0;
   const precomputedWigner = state?.wignerData;
   const wignerRange = state?.wignerRange ?? 5;
+  const densityMatrix = state?.densityMatrix;
 
   // Generate Wigner function from state
   useEffect(() => {
@@ -42,6 +43,11 @@ export default function QumodeDisplay({
       // Use pre-computed Wigner from backend (computed from full density matrix)
       wigner = precomputedWigner;
       range = wignerRange;
+    } else if (densityMatrix && densityMatrix.length > 0) {
+      // Compute from density matrix (handles mixed states correctly)
+      const size = 80;
+      range = 5;
+      wigner = computeWignerFromDensityMatrix(densityMatrix, size, range);
     } else {
       // Fall back to local computation (only accurate for pure states)
       const size = 80;
@@ -103,7 +109,7 @@ export default function QumodeDisplay({
     ctx.moveTo(0, canvas.height / 2);
     ctx.lineTo(canvas.width, canvas.height / 2);
     ctx.stroke();
-  }, [mode, fockAmplitudes, fockTruncation, precomputedWigner, wignerRange]);
+  }, [mode, fockAmplitudes, fockTruncation, precomputedWigner, wignerRange, densityMatrix]);
 
   // Find max probability for scaling
   const maxProb = Math.max(...fockProbabilities.slice(0, fockTruncation), 0.001);
@@ -358,4 +364,105 @@ function associatedLaguerre(n: number, k: number, x: number): number {
   }
 
   return L1;
+}
+
+// Compute Wigner function from full density matrix (handles mixed states)
+function computeWignerFromDensityMatrix(
+  rho: { re: number; im: number }[][],
+  gridSize: number,
+  range: number
+): number[][] {
+  const wigner: number[][] = [];
+  const fockDim = rho.length;
+
+  // Precompute factorials
+  const factorials: number[] = [1];
+  for (let i = 1; i < fockDim; i++) {
+    factorials[i] = factorials[i - 1] * i;
+  }
+
+  for (let ix = 0; ix < gridSize; ix++) {
+    wigner[ix] = [];
+    const x = ((ix + 0.5) / gridSize - 0.5) * 2 * range;
+
+    for (let ip = 0; ip < gridSize; ip++) {
+      const p = ((ip + 0.5) / gridSize - 0.5) * 2 * range;
+
+      const r2 = x * x + p * p;
+      const expFactor = Math.exp(-2 * r2);
+      const prefactor = (2 / Math.PI) * expFactor;
+
+      let W = 0;
+
+      // Sum over all density matrix elements
+      for (let m = 0; m < fockDim; m++) {
+        for (let n = 0; n < fockDim; n++) {
+          const rhoMN_re = rho[m][n].re;
+          const rhoMN_im = rho[m][n].im;
+
+          // Skip negligible elements
+          if (Math.abs(rhoMN_re) < 1e-15 && Math.abs(rhoMN_im) < 1e-15) continue;
+
+          // W_{mn}(x,p) formula using associated Laguerre polynomials
+          let WmnContrib: number;
+
+          if (m === n) {
+            // Diagonal: W_{nn} = (2/π) * (-1)^n * exp(-2r²) * L_n(4r²)
+            const Ln = laguerre(n, 4 * r2);
+            const sign = (n % 2 === 0) ? 1 : -1;
+            WmnContrib = prefactor * sign * Ln * rhoMN_re;
+          } else if (m < n) {
+            // Off-diagonal m < n
+            const k = n - m;
+            const sqrtFactor = Math.sqrt(factorials[m] / factorials[n]);
+            const Lmk = associatedLaguerre(m, k, 4 * r2);
+            const sign = (m % 2 === 0) ? 1 : -1;
+
+            // Compute (2(x - ip))^k
+            let powRe = 1, powIm = 0;
+            for (let i = 0; i < k; i++) {
+              const newRe = powRe * 2 * x + powIm * 2 * p;
+              const newIm = powIm * 2 * x - powRe * 2 * p;
+              powRe = newRe;
+              powIm = newIm;
+            }
+
+            const Wmn_re = prefactor * sign * sqrtFactor * Lmk * powRe;
+            const Wmn_im = prefactor * sign * sqrtFactor * Lmk * powIm;
+
+            // ρ_{mn} * W_{mn} contribution (real part)
+            WmnContrib = rhoMN_re * Wmn_re - rhoMN_im * Wmn_im;
+          } else {
+            // Off-diagonal m > n: use conjugate symmetry
+            // W_{mn} = W_{nm}* and ρ_{mn} = ρ_{nm}*
+            // So ρ_{mn} * W_{mn} = (ρ_{nm} * W_{nm})*, contributing same real part
+            const k = m - n;
+            const sqrtFactor = Math.sqrt(factorials[n] / factorials[m]);
+            const Lnk = associatedLaguerre(n, k, 4 * r2);
+            const sign = (n % 2 === 0) ? 1 : -1;
+
+            // Compute (2(x + ip))^k for m > n (conjugate of the m < n case)
+            let powRe = 1, powIm = 0;
+            for (let i = 0; i < k; i++) {
+              const newRe = powRe * 2 * x - powIm * 2 * p;
+              const newIm = powIm * 2 * x + powRe * 2 * p;
+              powRe = newRe;
+              powIm = newIm;
+            }
+
+            const Wmn_re = prefactor * sign * sqrtFactor * Lnk * powRe;
+            const Wmn_im = prefactor * sign * sqrtFactor * Lnk * powIm;
+
+            WmnContrib = rhoMN_re * Wmn_re - rhoMN_im * Wmn_im;
+          }
+
+          W += WmnContrib;
+        }
+      }
+
+      wigner[ix][ip] = W;
+    }
+  }
+
+  return wigner;
 }
