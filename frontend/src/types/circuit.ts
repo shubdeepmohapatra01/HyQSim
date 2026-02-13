@@ -1,6 +1,6 @@
 // Gate types for the hybrid CV-DV quantum simulator
 
-export type GateCategory = 'qubit' | 'qumode' | 'hybrid';
+export type GateCategory = 'qubit' | 'qumode' | 'hybrid' | 'custom';
 
 // Parameter definition for gates
 export interface GateParameter {
@@ -32,6 +32,10 @@ export interface CircuitElement {
   targetWireIndices?: number[];
   // Store actual parameter values for this gate instance
   parameterValues?: Record<string, number>;
+  // For custom generator gates: the generator expression (e.g., "a + ad", "z * n")
+  generatorExpression?: string;
+  // Links parameter-dependent benchmark gates (e.g., "cat-cd1", "cat-cd2")
+  benchmarkGroup?: string;
 }
 
 // Initial state options for qubits: |0⟩, |1⟩, |+⟩, |-⟩, |i⟩, |-i⟩
@@ -81,11 +85,26 @@ export interface SimulationResult {
   qumodeStates: Map<number, QumodeState>; // keyed by wire index
   backend: 'browser' | 'bosonic-qiskit';
   executionTime: number; // in milliseconds
+  bitstringCounts?: Record<string, number>;
 }
 
 export interface QubitPostSelection {
   wireIndex: number;
   outcome: 0 | 1;
+}
+
+export interface ImportCircuitResponse {
+  success: boolean;
+  wires: Wire[];
+  elements: CircuitElement[];
+  error?: string;
+  warnings: string[];
+}
+
+export interface ExportCircuitResponse {
+  success: boolean;
+  code: string;
+  error?: string;
 }
 
 // Predefined gates with parameters
@@ -182,6 +201,22 @@ export const QUMODE_GATES: Gate[] = [
     numQumodes: 1,
     parameters: [{ name: 'kappa', symbol: 'κ', defaultValue: 0.1, min: -1, max: 1, step: 0.01 }],
   },
+  {
+    id: 'annihilate',
+    name: 'Annihilation',
+    symbol: 'a',
+    category: 'qumode',
+    description: 'Annihilation operator a (photon subtraction)',
+    numQumodes: 1,
+  },
+  {
+    id: 'create',
+    name: 'Creation',
+    symbol: 'a†',
+    category: 'qumode',
+    description: 'Creation operator a† (photon addition)',
+    numQumodes: 1,
+  },
 ];
 
 export const HYBRID_GATES: Gate[] = [
@@ -239,7 +274,31 @@ export const HYBRID_GATES: Gate[] = [
   // },
 ];
 
-export const ALL_GATES = [...QUBIT_GATES, ...QUMODE_GATES, ...HYBRID_GATES];
+export const CUSTOM_GATES: Gate[] = [
+  {
+    id: 'custom',
+    name: 'Custom Generator',
+    symbol: 'U',
+    category: 'custom',
+    description: 'Custom unitary e^{-iθG} from Hermitian generator G',
+    // numQubits and numQumodes determined dynamically from expression
+    parameters: [
+      { name: 'theta', symbol: 'θ', defaultValue: Math.PI / 4, min: -2 * Math.PI, max: 2 * Math.PI, step: 0.1, unit: 'rad' },
+    ],
+  },
+];
+
+export const ALL_GATES = [...QUBIT_GATES, ...QUMODE_GATES, ...HYBRID_GATES, ...CUSTOM_GATES];
+
+// Custom generator expression type for parsed expressions
+export type GeneratorType = 'cv' | 'dv' | 'hybrid';
+
+export interface ParsedGenerator {
+  type: GeneratorType;
+  expression: string;
+  isValid: boolean;
+  error?: string;
+}
 
 // Helper to get default parameter values for a gate
 export function getDefaultParameters(gate: Gate): Record<string, number> {
