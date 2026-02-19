@@ -343,8 +343,10 @@ class GeneratorParser {
       this.consume(); // consume '*'
       const right = this.parseFactor();
 
-      // For hybrid gates, use tensor product; otherwise matrix multiplication
-      if (this.type === 'hybrid') {
+      // Use dimensions to decide: same-size → matrix multiply, different-size → tensor product
+      // This correctly handles e.g. z*(ad*a) where ad*a should be matrix-multiplied (both fockDim)
+      // and then z (2x2) ⊗ result (fockDim×fockDim) should be tensor-producted
+      if (this.type === 'hybrid' && result.length !== right.length) {
         result = tensorProduct(result, right);
       } else {
         result = matrixMul(result, right);

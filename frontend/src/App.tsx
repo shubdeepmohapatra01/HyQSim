@@ -124,7 +124,7 @@ function App() {
     (gate: Gate & { generatorExpression?: string }, wireIndex: number, position: { x: number; y: number }, targetWireIndices?: number[]) => {
       const newElement: CircuitElement = {
         id: `element-${Date.now()}`,
-        gateId: gate.category === 'custom' ? 'custom' : gate.id, // Use base 'custom' id for all custom gates
+        gateId: gate.id.startsWith('custom-saved-') ? (targetWireIndices?.length ? 'custom_cvdv' : 'custom_cv') : gate.id,
         position,
         wireIndex,
         targetWireIndices,

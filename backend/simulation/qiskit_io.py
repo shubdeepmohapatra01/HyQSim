@@ -667,7 +667,7 @@ def generate_bosonic_qiskit(
             mapping = EXPORT_MAP.get(gate_id)
 
             if not mapping:
-                if gate_id == "custom":
+                if gate_id in ("custom", "custom_cv", "custom_cvdv"):
                     lines.append(f"# Skipped custom generator gate (not representable in bosonic qiskit)")
                 elif gate_id in ("annihilate", "create"):
                     lines.append(f"# Skipped non-unitary operator: {gate_id}")

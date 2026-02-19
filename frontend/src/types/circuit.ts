@@ -201,22 +201,6 @@ export const QUMODE_GATES: Gate[] = [
     numQumodes: 1,
     parameters: [{ name: 'kappa', symbol: 'κ', defaultValue: 0.1, min: -1, max: 1, step: 0.01 }],
   },
-  {
-    id: 'annihilate',
-    name: 'Annihilation',
-    symbol: 'a',
-    category: 'qumode',
-    description: 'Annihilation operator a (photon subtraction)',
-    numQumodes: 1,
-  },
-  {
-    id: 'create',
-    name: 'Creation',
-    symbol: 'a†',
-    category: 'qumode',
-    description: 'Creation operator a† (photon addition)',
-    numQumodes: 1,
-  },
 ];
 
 export const HYBRID_GATES: Gate[] = [
@@ -274,19 +258,33 @@ export const HYBRID_GATES: Gate[] = [
   // },
 ];
 
-export const CUSTOM_GATES: Gate[] = [
+export const CUSTOM_CV_GATES: Gate[] = [
   {
-    id: 'custom',
-    name: 'Custom Generator',
-    symbol: 'U',
+    id: 'custom_cv',
+    name: 'Custom CV',
+    symbol: 'Ucv',
     category: 'custom',
-    description: 'Custom unitary e^{-iθG} from Hermitian generator G',
-    // numQubits and numQumodes determined dynamically from expression
+    description: 'Custom CV unitary e^{-iθG} from bosonic generator G (a, a†, n)',
     parameters: [
       { name: 'theta', symbol: 'θ', defaultValue: Math.PI / 4, min: -2 * Math.PI, max: 2 * Math.PI, step: 0.1, unit: 'rad' },
     ],
   },
 ];
+
+export const CUSTOM_CVDV_GATES: Gate[] = [
+  {
+    id: 'custom_cvdv',
+    name: 'Custom CV-DV',
+    symbol: 'Ucv-dv',
+    category: 'custom',
+    description: 'Custom hybrid unitary e^{-iθG} from qubit⊗qumode generator G (e.g. z*n)',
+    parameters: [
+      { name: 'theta', symbol: 'θ', defaultValue: Math.PI / 4, min: -2 * Math.PI, max: 2 * Math.PI, step: 0.1, unit: 'rad' },
+    ],
+  },
+];
+
+export const CUSTOM_GATES: Gate[] = [...CUSTOM_CV_GATES, ...CUSTOM_CVDV_GATES];
 
 export const ALL_GATES = [...QUBIT_GATES, ...QUMODE_GATES, ...HYBRID_GATES, ...CUSTOM_GATES];
 

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { Gate } from '../types/circuit';
-import { QUBIT_GATES, QUMODE_GATES, HYBRID_GATES, CUSTOM_GATES } from '../types/circuit';
+import { QUBIT_GATES, QUMODE_GATES, HYBRID_GATES, CUSTOM_CV_GATES, CUSTOM_CVDV_GATES } from '../types/circuit';
+import { parseGeneratorExpression } from '../simulation/customGenerator';
 
 interface SavedCustomGate {
   name: string;
@@ -48,6 +49,11 @@ function GateButton({ gate, onDragStart, colorClass, generatorExpression, onRemo
       >
         <span className="font-bold text-lg">{gate.symbol}</span>
         <span className="text-[10px] opacity-70 truncate max-w-full">{gate.name}</span>
+        {generatorExpression && (
+          <span className="text-[8px] opacity-50 truncate max-w-full">
+            {generatorExpression.length > 10 ? generatorExpression.slice(0, 9) + '…' : generatorExpression}
+          </span>
+        )}
       </div>
       {/* Remove button for saved custom gates */}
       {onRemove && showRemove && (
@@ -93,22 +99,38 @@ function GateSection({ title, gates, onDragStart, colorClass, borderColor }: Gat
 }
 
 export default function GatePalette({ onDragStart, savedCustomGates = [], onRemoveCustomGate }: GatePaletteProps) {
-  // Convert saved custom gates to Gate objects
-  const savedGates: Array<{ gate: Gate; expression: string }> = savedCustomGates.map((saved) => {
-    return {
-      gate: {
-        id: `custom-saved-${saved.name}`,
-        name: saved.name,
-        symbol: saved.name,
-        category: 'custom' as const,
-        description: `Custom: ${saved.expression}`,
-        parameters: [
-          { name: 'theta', symbol: 'θ', defaultValue: Math.PI / 4, min: -2 * Math.PI, max: 2 * Math.PI, step: 0.1, unit: 'rad' },
-        ],
-      },
-      expression: saved.expression,
-    };
-  });
+  // Convert saved custom gates to Gate objects and auto-sort by expression type
+  const { savedCVGates, savedCVDVGates } = useMemo(() => {
+    const cv: Array<{ gate: Gate; expression: string }> = [];
+    const cvdv: Array<{ gate: Gate; expression: string }> = [];
+
+    for (const saved of savedCustomGates) {
+      const parsed = parseGeneratorExpression(saved.expression);
+      const isHybrid = parsed.isValid && parsed.type === 'hybrid';
+
+      const entry = {
+        gate: {
+          id: `custom-saved-${saved.name}`,
+          name: saved.name,
+          symbol: saved.name,
+          category: 'custom' as const,
+          description: `Custom: ${saved.expression}`,
+          parameters: [
+            { name: 'theta', symbol: 'θ', defaultValue: Math.PI / 4, min: -2 * Math.PI, max: 2 * Math.PI, step: 0.1, unit: 'rad' },
+          ],
+        },
+        expression: saved.expression,
+      };
+
+      if (isHybrid) {
+        cvdv.push(entry);
+      } else {
+        cv.push(entry);
+      }
+    }
+
+    return { savedCVGates: cv, savedCVDVGates: cvdv };
+  }, [savedCustomGates]);
 
   return (
     <div className="bg-slate-800 p-4 rounded-xl h-full overflow-y-auto">
@@ -138,12 +160,11 @@ export default function GatePalette({ onDragStart, savedCustomGates = [], onRemo
         borderColor="border-purple-500"
       />
 
-      {/* Custom Gates section with saved gates */}
+      {/* Custom CV Gates section */}
       <div className="mb-4">
-        <h3 className="text-sm font-semibold mb-2 border-amber-500 border-b pb-1">Custom Gates</h3>
+        <h3 className="text-sm font-semibold mb-2 border-amber-500 border-b pb-1">Custom CV Gates</h3>
         <div className="flex flex-wrap gap-2">
-          {/* Base custom gate (for creating new ones) */}
-          {CUSTOM_GATES.map((gate) => (
+          {CUSTOM_CV_GATES.map((gate) => (
             <GateButton
               key={gate.id}
               gate={gate}
@@ -151,8 +172,7 @@ export default function GatePalette({ onDragStart, savedCustomGates = [], onRemo
               colorClass="bg-amber-600 text-white"
             />
           ))}
-          {/* Saved custom gates */}
-          {savedGates.map(({ gate, expression }) => (
+          {savedCVGates.map(({ gate, expression }) => (
             <GateButton
               key={gate.id}
               gate={gate}
@@ -163,12 +183,38 @@ export default function GatePalette({ onDragStart, savedCustomGates = [], onRemo
             />
           ))}
         </div>
-        {savedGates.length > 0 && (
-          <div className="mt-2 text-[10px] text-slate-500">
-            Hover over saved gates to remove them
-          </div>
-        )}
       </div>
+
+      {/* Custom CV-DV Gates section */}
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold mb-2 border-amber-500 border-b pb-1">Custom CV-DV Gates</h3>
+        <div className="flex flex-wrap gap-2">
+          {CUSTOM_CVDV_GATES.map((gate) => (
+            <GateButton
+              key={gate.id}
+              gate={gate}
+              onDragStart={onDragStart}
+              colorClass="bg-amber-700 text-white"
+            />
+          ))}
+          {savedCVDVGates.map(({ gate, expression }) => (
+            <GateButton
+              key={gate.id}
+              gate={gate}
+              onDragStart={onDragStart}
+              colorClass="bg-amber-800 text-white"
+              generatorExpression={expression}
+              onRemove={onRemoveCustomGate ? () => onRemoveCustomGate(gate.name) : undefined}
+            />
+          ))}
+        </div>
+      </div>
+
+      {(savedCVGates.length > 0 || savedCVDVGates.length > 0) && (
+        <div className="text-[10px] text-slate-500">
+          Hover over saved gates to remove them
+        </div>
+      )}
     </div>
   );
 }
