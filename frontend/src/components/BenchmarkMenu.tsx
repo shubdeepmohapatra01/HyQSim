@@ -11,7 +11,7 @@ export default function BenchmarkMenu({ onLoadBenchmark, hasExistingCircuit }: B
   const [open, setOpen] = useState(false);
   const [selectedBenchmark, setSelectedBenchmark] = useState<BenchmarkDefinition | null>(null);
   const [paramValues, setParamValues] = useState<Record<string, number>>({});
-  const [pendingMode, setPendingMode] = useState<'new' | 'append' | null>(null);
+  const [pendingMode, setPendingMode] = useState<'new' | 'append' | 'choose' | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
