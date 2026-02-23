@@ -315,6 +315,8 @@ export default function CircuitCanvas({
               const isQubit = wire.type === 'qubit';
               const wireColor = isQubit ? '#3b82f6' : '#10b981';
               const bgColor = isQubit ? '#1e3a5f' : '#134e4a';
+              // Compute type-specific label index (count of same-type wires before this one)
+              const typeIndex = wires.slice(0, index).filter(w => w.type === wire.type).length;
               const isHovered = hoveredWire === wire.id;
               const isPendingTarget = pendingHybridGate && pendingHybridGate.firstWireIndex !== index;
 
@@ -344,7 +346,7 @@ export default function CircuitCanvas({
                     fontWeight="bold"
                     className="pointer-events-none"
                   >
-                    {isQubit ? `q${wire.index}` : `m${wire.index}`}
+                    {isQubit ? `q${typeIndex}` : `m${typeIndex}`}
                   </text>
                   {/* Initial state indicator */}
                   <text
