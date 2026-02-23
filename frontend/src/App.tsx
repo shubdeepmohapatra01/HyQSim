@@ -3,7 +3,7 @@ import GatePalette from './components/GatePalette';
 import CircuitCanvas from './components/CircuitCanvas';
 import DisplayPanel from './components/DisplayPanel';
 import GateParameterEditor from './components/GateParameterEditor';
-import QiskitIOModal from './components/QiskitIOModal';
+import ImportExportModal from './components/ImportExportModal';
 import BenchmarkMenu from './components/BenchmarkMenu';
 import { BENCHMARKS, recomputeCatCDParams } from './benchmarks/circuits';
 import type { Gate, Wire, CircuitElement, SimulationResult, QubitPostSelection, QubitInitialState, QumodeInitialState } from './types/circuit';
@@ -231,7 +231,7 @@ function App() {
         await new Promise<void>((resolve) => {
           setTimeout(() => {
             try {
-              const result = runSimulation(wires, elements, gatesMap, fockTruncation, postSelections);
+              const result = runSimulation(wires, elements, gatesMap, fockTruncation, postSelections, shots);
               setSimulationResult(result);
             } catch (error) {
               console.error('Simulation error:', error);
@@ -258,7 +258,7 @@ function App() {
     setPostSelections([]);
   }, []);
 
-  const handleLoadBenchmark = useCallback((benchmarkId: string, mode: 'new' | 'append', params?: Record<string, number>) => {
+  const handleLoadBenchmark = useCallback((benchmarkId: string, mode: 'new' | 'append' | 'append-new-qubits', params?: Record<string, number>) => {
     const benchmark = BENCHMARKS.find(b => b.id === benchmarkId);
     if (!benchmark) return;
     const { wires: bmWires, elements: bmElements, fockTruncation: newFock } = benchmark.build(params);
@@ -274,29 +274,60 @@ function App() {
       return;
     }
 
-    // Append mode: reuse existing qumode, add new qubits, remap and append elements
-    const existingQumodeIdx = wires.findIndex(w => w.type === 'qumode');
-    const bmQumodeIdx = bmWires.findIndex(w => w.type === 'qumode');
-    const bmQubits = bmWires.filter(w => w.type === 'qubit');
+    // Append mode: reuse existing wires where possible, only add new ones if needed
+    // 'append-new-qubits': reuse qumodes but always create fresh qubits
+    const reuseQubits = mode === 'append';
 
-    // Build wire index mapping: benchmark wire index → new wire index
+    const existingQumodes = wires.map((w, i) => ({ wire: w, idx: i })).filter(e => e.wire.type === 'qumode');
+    const existingQubits = wires.map((w, i) => ({ wire: w, idx: i })).filter(e => e.wire.type === 'qubit');
+    const bmQumodes = bmWires.map((w, i) => ({ wire: w, idx: i })).filter(e => e.wire.type === 'qumode');
+    const bmQubits = bmWires.map((w, i) => ({ wire: w, idx: i })).filter(e => e.wire.type === 'qubit');
+
+    // Build wire index mapping: benchmark wire index → circuit wire index
     const wireMap = new Map<number, number>();
-    if (bmQumodeIdx >= 0 && existingQumodeIdx >= 0) {
-      wireMap.set(bmQumodeIdx, existingQumodeIdx);
+
+    // Map benchmark qumodes to existing qumodes, create new ones only if needed
+    for (let i = 0; i < bmQumodes.length; i++) {
+      if (i < existingQumodes.length) {
+        wireMap.set(bmQumodes[i].idx, existingQumodes[i].idx);
+      }
     }
 
-    // Add new qubit wires
+    // Map benchmark qubits to existing qubits only in 'append' mode
+    if (reuseQubits) {
+      for (let i = 0; i < bmQubits.length; i++) {
+        if (i < existingQubits.length) {
+          wireMap.set(bmQubits[i].idx, existingQubits[i].idx);
+        }
+      }
+    }
+
+    // Add new wires only for benchmark wires that couldn't be mapped to existing ones
     const newWires = [...wires];
     let nextQubitCount = qubitCount;
-    for (const bmQubit of bmQubits) {
-      const bmIdx = bmWires.indexOf(bmQubit);
+    let nextQumodeCount = wires.filter(w => w.type === 'qumode').length;
+
+    for (let i = existingQumodes.length; i < bmQumodes.length; i++) {
       const newIdx = newWires.length;
-      wireMap.set(bmIdx, newIdx);
+      wireMap.set(bmQumodes[i].idx, newIdx);
+      newWires.push({
+        id: `wire-qumode-${nextQumodeCount}`,
+        type: 'qumode',
+        index: nextQumodeCount,
+        initialState: bmQumodes[i].wire.initialState,
+      });
+      nextQumodeCount++;
+    }
+
+    const qubitStartIdx = reuseQubits ? existingQubits.length : 0;
+    for (let i = qubitStartIdx; i < bmQubits.length; i++) {
+      const newIdx = newWires.length;
+      wireMap.set(bmQubits[i].idx, newIdx);
       newWires.push({
         id: `wire-qubit-${nextQubitCount}`,
         type: 'qubit',
         index: nextQubitCount,
-        initialState: bmQubit.initialState,
+        initialState: bmQubits[i].wire.initialState,
       });
       nextQubitCount++;
     }
@@ -382,7 +413,7 @@ function App() {
 
             {/* Benchmarks + Import/Export */}
             <div className="flex items-center gap-1">
-              <BenchmarkMenu onLoadBenchmark={handleLoadBenchmark} hasExistingCircuit={wires.length > 0} />
+              <BenchmarkMenu onLoadBenchmark={handleLoadBenchmark} hasExistingCircuit={wires.length > 0} hasExistingQubits={wires.some(w => w.type === 'qubit')} />
               <button
                 onClick={() => setQiskitIOMode('import')}
                 className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded transition-colors"
@@ -477,9 +508,9 @@ function App() {
         );
       })()}
 
-      {/* Qiskit Import/Export Modal */}
+      {/* Import/Export Modal */}
       {qiskitIOMode && (
-        <QiskitIOModal
+        <ImportExportModal
           mode={qiskitIOMode}
           wires={wires}
           elements={elements}

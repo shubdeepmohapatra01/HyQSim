@@ -3,11 +3,12 @@ import { BENCHMARKS } from '../benchmarks/circuits';
 import type { BenchmarkDefinition } from '../benchmarks/circuits';
 
 interface BenchmarkMenuProps {
-  onLoadBenchmark: (benchmarkId: string, mode: 'new' | 'append', params?: Record<string, number>) => void;
+  onLoadBenchmark: (benchmarkId: string, mode: 'new' | 'append' | 'append-new-qubits', params?: Record<string, number>) => void;
   hasExistingCircuit: boolean;
+  hasExistingQubits: boolean;
 }
 
-export default function BenchmarkMenu({ onLoadBenchmark, hasExistingCircuit }: BenchmarkMenuProps) {
+export default function BenchmarkMenu({ onLoadBenchmark, hasExistingCircuit, hasExistingQubits }: BenchmarkMenuProps) {
   const [open, setOpen] = useState(false);
   const [selectedBenchmark, setSelectedBenchmark] = useState<BenchmarkDefinition | null>(null);
   const [paramValues, setParamValues] = useState<Record<string, number>>({});
@@ -61,11 +62,17 @@ export default function BenchmarkMenu({ onLoadBenchmark, hasExistingCircuit }: B
     }
   };
 
-  const handleModeChoice = (mode: 'new' | 'append') => {
+  const handleModeChoice = (mode: 'new' | 'append' | 'append-new-qubits') => {
     if (!selectedBenchmark) return;
     onLoadBenchmark(selectedBenchmark.id, mode, selectedBenchmark.params ? paramValues : undefined);
     resetState();
   };
+
+  // Check if selected benchmark needs qubits
+  const benchmarkNeedsQubits = selectedBenchmark ? (() => {
+    const built = selectedBenchmark.build(selectedBenchmark.params ? paramValues : undefined);
+    return built.wires.some(w => w.type === 'qubit');
+  })() : false;
 
   // Determine which view to show
   const showModeChoice = selectedBenchmark && (
@@ -101,9 +108,18 @@ export default function BenchmarkMenu({ onLoadBenchmark, hasExistingCircuit }: B
                   onClick={() => handleModeChoice('append')}
                   className="w-full text-left px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition-colors"
                 >
-                  <div className="text-sm text-slate-200">Append to Circuit</div>
-                  <div className="text-xs text-slate-400">Reuse existing qumode, add new qubits</div>
+                  <div className="text-sm text-slate-200">Append (reuse qubits)</div>
+                  <div className="text-xs text-slate-400">Reuse existing wires where possible</div>
                 </button>
+                {hasExistingQubits && benchmarkNeedsQubits && (
+                  <button
+                    onClick={() => handleModeChoice('append-new-qubits')}
+                    className="w-full text-left px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded transition-colors"
+                  >
+                    <div className="text-sm text-slate-200">Append (fresh qubits)</div>
+                    <div className="text-xs text-slate-400">Reuse qumode but add new qubits</div>
+                  </button>
+                )}
               </div>
             </div>
           ) : showParamForm ? (
