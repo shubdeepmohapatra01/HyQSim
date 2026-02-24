@@ -207,3 +207,4 @@ The simulator will run entirely in your browser with JavaScript. Some features l
 
 - [bosonic-qiskit](https://github.com/C2QA/bosonic-qiskit) by C2QA for CV-DV quantum simulation
 - [Qiskit](https://qiskit.org/) for quantum computing framework
+- This work is funded partially by DoE Grant DE-SC0025384, NSF grants OMA-2120757, PHY-2325080, and OSI-2410675.
