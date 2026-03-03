@@ -26,10 +26,12 @@ interface Token {
   value: string | number;
 }
 
-// CV operators: a (annihilation), ad (creation), n (number)
-const CV_OPERATORS = ['a', 'ad', 'n'];
-// DV operators: x, y, z (Pauli), I (identity)
-const DV_OPERATORS = ['x', 'y', 'z', 'I'];
+// CV operators: a (annihilation), ad (creation), n (number),
+//              q = (a+a†)/√2 (position quadrature x̂),
+//              p = i(a†-a)/√2 (momentum quadrature p̂)
+const CV_OPERATORS = ['a', 'ad', 'n', 'q', 'p'];
+// DV operators: x, y, z (Pauli), I (identity), sp (σ₊=|1⟩⟨0|), sm (σ₋=|0⟩⟨1|)
+const DV_OPERATORS = ['x', 'y', 'z', 'I', 'sp', 'sm'];
 
 /**
  * Tokenize the generator expression
@@ -145,26 +147,38 @@ export function parseGeneratorExpression(expression: string): ParsedGenerator {
 }
 
 /**
- * Get the Pauli matrix for a DV operator
+ * Get the Pauli / ladder matrix for a DV operator
+ * sp = σ₊ = |e⟩⟨g| = [[0,0],[1,0]]  (raises ground→excited, NOT Hermitian alone)
+ * sm = σ₋ = |g⟩⟨e| = [[0,1],[0,0]]  (lowers excited→ground, NOT Hermitian alone)
+ * Note: sp*a + sm*ad IS Hermitian and represents the JC coupling generator.
  */
 function getPauliMatrix(op: string): Matrix {
   switch (op.toLowerCase()) {
     case 'x': return GATES.X;
     case 'y': return GATES.Y;
     case 'z': return GATES.Z;
-    case 'i': return [[ONE, ZERO], [ZERO, ONE]]; // 2x2 identity
+    case 'i': return [[ONE, ZERO], [ZERO, ONE]];
+    case 'sp': return [[ZERO, ZERO], [ONE, ZERO]]; // σ₊ = |e⟩⟨g|, raises ground→excited
+    case 'sm': return [[ZERO, ONE], [ZERO, ZERO]]; // σ₋ = |g⟩⟨e|, lowers excited→ground
     default: throw new Error(`Unknown DV operator: ${op}`);
   }
 }
 
 /**
- * Get the CV operator matrix
+ * Get the CV operator matrix.
+ * q = (a + a†)/√2  — position quadrature x̂
+ * p = i(a† - a)/√2 — momentum quadrature p̂
  */
 function getCVMatrix(op: string, fockDim: number): Matrix {
+  const inv_sqrt2 = 1 / Math.sqrt(2);
   switch (op.toLowerCase()) {
-    case 'a': return annihilationMatrix(fockDim);
+    case 'a':  return annihilationMatrix(fockDim);
     case 'ad': return creationMatrix(fockDim);
-    case 'n': return numberMatrix(fockDim);
+    case 'n':  return numberMatrix(fockDim);
+    case 'q':  // x̂ = (a + a†)/√2
+      return matrixScale(matrixAdd(annihilationMatrix(fockDim), creationMatrix(fockDim)), complex(inv_sqrt2));
+    case 'p':  // p̂ = i(a† - a)/√2
+      return matrixScale(matrixSub(creationMatrix(fockDim), annihilationMatrix(fockDim)), complex(0, inv_sqrt2));
     default: throw new Error(`Unknown CV operator: ${op}`);
   }
 }
@@ -439,24 +453,56 @@ export function buildGeneratorMatrix(
 }
 
 /**
- * Compute matrix exponential e^{-iθA} using Taylor series
- * For small matrices and moderate θ, this is reasonably accurate
+ * Compute matrix exponential e^{-iθA} using scaling-and-squaring + Taylor series.
+ *
+ * Plain Taylor series diverges for large |θ| or large ||A||. Instead:
+ *   1. Form B = -iθA
+ *   2. Find m so that ||B||₁ / 2^m < 1
+ *   3. Compute exp(B/2^m) via Taylor series (guaranteed to converge)
+ *   4. Square m times: exp(B) = exp(B/2^m)^{2^m}
+ *
+ * This handles the large angles (θ ≈ 28) used in CV QAOA correctly.
  */
-export function matrixExponential(A: Matrix, theta: number, terms: number = 20): Matrix {
+export function matrixExponential(A: Matrix, theta: number, terms: number = 30): Matrix {
   const n = A.length;
 
-  // Compute -iθA
-  const iTheta = complex(0, -theta);
-  let scaledA = matrixScale(A, iTheta);
+  // B = -iθA
+  const B = matrixScale(A, complex(0, -theta));
 
-  // Start with identity matrix
+  // 1-norm of B (max column sum of absolute values)
+  let norm1 = 0;
+  for (let j = 0; j < n; j++) {
+    let colSum = 0;
+    for (let i = 0; i < n; i++) {
+      colSum += Math.sqrt(B[i][j].re ** 2 + B[i][j].im ** 2);
+    }
+    norm1 = Math.max(norm1, colSum);
+  }
+
+  // Find m so that norm1 / 2^m ≤ 1
+  let m = 0;
+  let scaledNorm = norm1;
+  while (scaledNorm > 1 && m < 60) {
+    scaledNorm /= 2;
+    m++;
+  }
+
+  // Scaled matrix: B / 2^m
+  const sf = Math.pow(2, m);
+  const Bs = matrixScale(B, complex(1 / sf));
+
+  // Taylor series for exp(Bs): guaranteed to converge since ||Bs|| ≤ 1
   let result = identityMatrix(n);
-  let power = identityMatrix(n); // Will hold (-iθA)^k / k!
-
+  let power = identityMatrix(n);
   for (let k = 1; k <= terms; k++) {
-    power = matrixMul(power, scaledA);
+    power = matrixMul(power, Bs);
     power = matrixScale(power, complex(1 / k));
     result = matrixAdd(result, power);
+  }
+
+  // Square m times to recover exp(B)
+  for (let i = 0; i < m; i++) {
+    result = matrixMul(result, result);
   }
 
   return result;
