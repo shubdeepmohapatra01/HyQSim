@@ -5,10 +5,10 @@ import DisplayPanel from './components/DisplayPanel';
 import GateParameterEditor from './components/GateParameterEditor';
 import ImportExportModal from './components/ImportExportModal';
 import BenchmarkMenu from './components/BenchmarkMenu';
-import RabiPlot from './components/RabiPlot';
+// import RabiPlot from './components/RabiPlot';
 import { BENCHMARKS, recomputeCatCDParams } from './benchmarks/circuits';
-import { runJCSweep } from './benchmarks/sweep';
-import type { JCSweepPoint } from './benchmarks/sweep';
+// import { runJCSweep } from './benchmarks/sweep';
+// import type { JCSweepPoint } from './benchmarks/sweep';
 import type { Gate, Wire, CircuitElement, SimulationResult, QubitPostSelection, QubitInitialState, QumodeInitialState } from './types/circuit';
 import { ALL_GATES, getDefaultParameters } from './types/circuit';
 import { runSimulation, getQubitBitstringPositions, marginalizeCountsToPositions } from './simulation/simulator';
@@ -23,9 +23,9 @@ function App() {
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  // JC Rabi-plot state
-  const [activeJCParams, setActiveJCParams] = useState<{ nSteps: number; g: number; omega: number; tau: number } | null>(null);
-  const [jcSweepData, setJcSweepData] = useState<JCSweepPoint[] | null>(null);
+  // // JC Rabi-plot state
+  // const [activeJCParams, setActiveJCParams] = useState<{ nSteps: number; g: number; omega: number; tau: number } | null>(null);
+  // const [jcSweepData, setJcSweepData] = useState<JCSweepPoint[] | null>(null);
 
   // Backend state
   const [backend, setBackend] = useState<SimulationBackend>('browser');
@@ -281,8 +281,8 @@ function App() {
     setQumodeCount(newWires.filter(w => w.type === 'qumode').length);
     setSimulationResult(null);
     setPostSelections([]);
-    setActiveJCParams(null);
-    setJcSweepData(null);
+    // setActiveJCParams(null);
+    // setJcSweepData(null);
   }, []);
 
   const handleClearCanvas = useCallback(() => {
@@ -292,8 +292,8 @@ function App() {
     setQumodeCount(0);
     setSimulationResult(null);
     setPostSelections([]);
-    setActiveJCParams(null);
-    setJcSweepData(null);
+    // setActiveJCParams(null);
+    // setJcSweepData(null);
   }, []);
 
   const handleLoadBenchmark = useCallback((benchmarkId: string, mode: 'new' | 'append' | 'append-new-qubits', params?: Record<string, number>) => {
@@ -309,13 +309,13 @@ function App() {
       setQumodeCount(bmWires.filter(w => w.type === 'qumode').length);
       setSimulationResult(null);
       setPostSelections([]);
-      // Track JC params so we can offer the Rabi-plot button
-      if (benchmarkId === 'jc-trotter' && params) {
-        setActiveJCParams({ nSteps: params.nSteps ?? 16, g: params.g ?? 1.0, omega: params.omega ?? 1.0, tau: params.tau ?? Math.PI / 32 });
-      } else {
-        setActiveJCParams(null);
-      }
-      setJcSweepData(null);
+      // // Track JC params so we can offer the Rabi-plot button
+      // if (benchmarkId === 'jc-trotter' && params) {
+      //   setActiveJCParams({ nSteps: params.nSteps ?? 16, g: params.g ?? 1.0, omega: params.omega ?? 1.0, tau: params.tau ?? Math.PI / 32 });
+      // } else {
+      //   setActiveJCParams(null);
+      // }
+      // setJcSweepData(null);
       return;
     }
 
@@ -459,7 +459,7 @@ function App() {
             {/* Benchmarks + Import/Export */}
             <div className="flex items-center gap-1">
               <BenchmarkMenu onLoadBenchmark={handleLoadBenchmark} hasExistingCircuit={wires.length > 0} hasExistingQubits={wires.some(w => w.type === 'qubit')} />
-              {activeJCParams && (
+              {/* {activeJCParams && (
                 <button
                   onClick={() => {
                     const data = runJCSweep(activeJCParams.nSteps, activeJCParams.g, activeJCParams.omega, activeJCParams.tau, fockTruncation);
@@ -470,7 +470,7 @@ function App() {
                 >
                   Rabi Plot
                 </button>
-              )}
+              )} */}
               <button
                 onClick={() => setQiskitIOMode('import')}
                 className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded transition-colors"
@@ -575,13 +575,13 @@ function App() {
       })()}
 
       {/* Rabi Oscillation Plot Modal */}
-      {jcSweepData && activeJCParams && (
+      {/* {jcSweepData && activeJCParams && (
         <RabiPlot
           data={jcSweepData}
           params={activeJCParams}
           onClose={() => setJcSweepData(null)}
         />
-      )}
+      )} */}
 
       {/* Import/Export Modal */}
       {qiskitIOMode && (

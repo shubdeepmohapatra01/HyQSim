@@ -320,8 +320,8 @@ export function splitArgs(argsStr: string): string[] {
   let depth = 0;
   let current = '';
   for (const ch of argsStr) {
-    if (ch === '(') depth++;
-    else if (ch === ')') depth--;
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
     else if (ch === ',' && depth === 0) {
       args.push(current.trim());
       current = '';

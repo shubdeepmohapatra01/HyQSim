@@ -192,14 +192,62 @@ export function parseHybridLane(code: string): ImportCircuitResponse {
   const elements: CircuitElement[] = [];
   const wireColumn: Record<number, number> = {};
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  for (const rawLine of lines) {
+    // Strip trailing inline comments (e.g.  # Vj beta_im), then split on semicolons
+    // so that multi-statement lines like  qml.H(wires=1); qml.Z(wires=1)  are each processed.
+    const noComment = rawLine.replace(/\s*#.*$/, '');
+    const statements = noComment.split(';');
+
+    for (const line of statements) {
+    // Normalize: strip 'return' keyword and trailing comma (handles both single-line
+    // returns and individual expval lines in multi-line return tuples).
+    let trimmed = line.trim();
+    if (trimmed.startsWith('return ')) trimmed = trimmed.slice('return '.length).trim();
+    if (trimmed.endsWith(',')) trimmed = trimmed.slice(0, -1).trim();
+
     if (trimmed.startsWith('#') || trimmed.startsWith('import ') || trimmed.startsWith('from ') ||
-        trimmed.startsWith('@') || trimmed.startsWith('def ') || trimmed.startsWith('return ') ||
+        trimmed.startsWith('@') || trimmed.startsWith('def ') ||
         trimmed.startsWith('dev ') || trimmed.startsWith('dev=') || trimmed === '' ||
+        trimmed === '(' || trimmed === ')' ||
         trimmed.startsWith('result')) {
       continue;
     }
+
+    // Handle qml.expval() — place measurement gates based on observable basis:
+    //   PauliZ  → measure
+    //   PauliX  → H + measure
+    //   PauliY  → S† + H + measure
+    // hqml.expval(hqml.N(...)) (qumode expectation) is silently skipped.
+    const expvalRe = /qml\.expval\(\s*qml\.(PauliZ|PauliX|PauliY)\s*\(\s*wires\s*=\s*(\d+)\s*\)\s*\)/g;
+    let evm: RegExpExecArray | null;
+    let foundExpval = false;
+    while ((evm = expvalRe.exec(trimmed)) !== null) {
+      foundExpval = true;
+      const basis = evm[1];
+      const wireNum = parseInt(evm[2], 10);
+      const wireIdx = registerWire(String(wireNum), 'qubit');
+      if (!(wireIdx in wireColumn)) wireColumn[wireIdx] = Math.max(0, ...Object.values(wireColumn));
+      // Align measurements to the current circuit end (global max column)
+      const col = Math.max(0, ...Object.values(wireColumn));
+      if (basis === 'PauliX') {
+        elements.push({ id: hlUid('el'), gateId: 'h',       position: { x: col * GATE_X_SPACING + 30,       y: 0 }, wireIndex: wireIdx });
+        wireColumn[wireIdx] = col + 1;
+        elements.push({ id: hlUid('el'), gateId: 'measure', position: { x: (col + 1) * GATE_X_SPACING + 30, y: 0 }, wireIndex: wireIdx });
+        wireColumn[wireIdx] = col + 2;
+      } else if (basis === 'PauliY') {
+        elements.push({ id: hlUid('el'), gateId: 'sdg',     position: { x: col * GATE_X_SPACING + 30,       y: 0 }, wireIndex: wireIdx });
+        wireColumn[wireIdx] = col + 1;
+        elements.push({ id: hlUid('el'), gateId: 'h',       position: { x: (col + 1) * GATE_X_SPACING + 30, y: 0 }, wireIndex: wireIdx });
+        wireColumn[wireIdx] = col + 2;
+        elements.push({ id: hlUid('el'), gateId: 'measure', position: { x: (col + 2) * GATE_X_SPACING + 30, y: 0 }, wireIndex: wireIdx });
+        wireColumn[wireIdx] = col + 3;
+      } else {
+        // PauliZ — bare measurement
+        elements.push({ id: hlUid('el'), gateId: 'measure', position: { x: col * GATE_X_SPACING + 30,       y: 0 }, wireIndex: wireIdx });
+        wireColumn[wireIdx] = col + 1;
+      }
+    }
+    if (foundExpval) continue;
 
     // Check for adjoint pattern: qml.adjoint(qml.S)(wire)
     let adjM = trimmed.match(adjointRe);
@@ -213,7 +261,7 @@ export function parseHybridLane(code: string): ImportCircuitResponse {
           const wr = parseWireRef(wireRefs[0]);
           if (wr) {
             const wireIdx = registerWire(wr.id, wr.type);
-            if (!(wireIdx in wireColumn)) wireColumn[wireIdx] = 0;
+            if (!(wireIdx in wireColumn)) wireColumn[wireIdx] = Math.max(0, ...Object.values(wireColumn));
             const col = wireColumn[wireIdx];
             wireColumn[wireIdx] = col + 1;
             elements.push({
@@ -265,10 +313,32 @@ export function parseHybridLane(code: string): ImportCircuitResponse {
       }
       continue;
     }
+    } // end for (const line of statements)
+  } // end for (const rawLine of lines)
+
+  // Reorder wires: qumodes first (by name), then qubits sorted by integer wire number.
+  // Sorting qubits by integer ID preserves the original 0→1→2 ordering regardless of
+  // which wire appears first in the code (e.g. the first CD gate may be on wire 2).
+  const reordered = [
+    ...wireOrder.filter(w => w.type === 'qumode').sort((a, b) => a.id.localeCompare(b.id)),
+    ...wireOrder.filter(w => w.type === 'qubit').sort((a, b) => parseInt(a.id) - parseInt(b.id)),
+  ];
+
+  // Build old-index → new-index mapping and remap all element wireIndex / targetWireIndices
+  const oldToNew = new Map<number, number>(
+    wireOrder.map((w, oldIdx) => [
+      oldIdx,
+      reordered.findIndex(rw => rw.type === w.type && rw.id === w.id),
+    ])
+  );
+  for (const elem of elements) {
+    elem.wireIndex = oldToNew.get(elem.wireIndex) ?? elem.wireIndex;
+    if (elem.targetWireIndices) {
+      elem.targetWireIndices = elem.targetWireIndices.map(ti => oldToNew.get(ti) ?? ti);
+    }
   }
 
-  // Build final wire list
-  const wires: Wire[] = wireOrder.map((w, i) => ({
+  const wires: Wire[] = reordered.map((w, i) => ({
     id: hlUid('wire'),
     type: w.type,
     index: i,
@@ -308,7 +378,7 @@ function processGateCall(
     const wr = parseWireRef(wireRefs[0]);
     if (!wr) { warnings.push(`Could not parse wire for ${gateId}`); return; }
     const wireIdx = registerWire(wr.id, 'qubit');
-    if (!(wireIdx in wireColumn)) wireColumn[wireIdx] = 0;
+    if (!(wireIdx in wireColumn)) wireColumn[wireIdx] = Math.max(0, ...Object.values(wireColumn));
 
     let parameterValues: Record<string, number> | undefined;
     if (hyqsimParams.length > 0 && paramVals.length > 0) {
@@ -335,12 +405,12 @@ function processGateCall(
     if (!wr0 || !wr1) { warnings.push(`Could not parse wires for CNOT`); return; }
     const ctrlIdx = registerWire(wr0.id, 'qubit');
     const tgtIdx = registerWire(wr1.id, 'qubit');
-    if (!(ctrlIdx in wireColumn)) wireColumn[ctrlIdx] = 0;
-    if (!(tgtIdx in wireColumn)) wireColumn[tgtIdx] = 0;
+    if (!(ctrlIdx in wireColumn)) wireColumn[ctrlIdx] = Math.max(0, ...Object.values(wireColumn));
+    if (!(tgtIdx in wireColumn)) wireColumn[tgtIdx] = Math.max(0, ...Object.values(wireColumn));
 
-    const col = Math.max(wireColumn[ctrlIdx], wireColumn[tgtIdx]);
-    wireColumn[ctrlIdx] = col + 1;
-    wireColumn[tgtIdx] = col + 1;
+    // Use global max so the gate clears all single-qubit gates on intermediate wires
+    const col = Math.max(...Object.values(wireColumn));
+    for (const k in wireColumn) wireColumn[Number(k)] = col + 1;
     elements.push({
       id: hlUid('el'),
       gateId,
@@ -354,7 +424,7 @@ function processGateCall(
     const wr = parseWireRef(wireRefs[0]);
     if (!wr) { warnings.push(`Could not parse wire for ${gateId}`); return; }
     const wireIdx = registerWire(wr.id, 'qumode');
-    if (!(wireIdx in wireColumn)) wireColumn[wireIdx] = 0;
+    if (!(wireIdx in wireColumn)) wireColumn[wireIdx] = Math.max(0, ...Object.values(wireColumn));
 
     let parameterValues: Record<string, number> | undefined;
     if (hyqsimParams.length > 0 && paramVals.length > 0) {
@@ -389,8 +459,8 @@ function processGateCall(
     if (!wr0 || !wr1) { warnings.push(`Could not parse wires for ${gateId}`); return; }
     const qm0Idx = registerWire(wr0.id, 'qumode');
     const qm1Idx = registerWire(wr1.id, 'qumode');
-    if (!(qm0Idx in wireColumn)) wireColumn[qm0Idx] = 0;
-    if (!(qm1Idx in wireColumn)) wireColumn[qm1Idx] = 0;
+    if (!(qm0Idx in wireColumn)) wireColumn[qm0Idx] = Math.max(0, ...Object.values(wireColumn));
+    if (!(qm1Idx in wireColumn)) wireColumn[qm1Idx] = Math.max(0, ...Object.values(wireColumn));
 
     let parameterValues: Record<string, number> | undefined;
     if (hyqsimParams.length > 0 && paramVals.length > 0) {
@@ -400,9 +470,8 @@ function processGateCall(
       }
     }
 
-    const col = Math.max(wireColumn[qm0Idx], wireColumn[qm1Idx]);
-    wireColumn[qm0Idx] = col + 1;
-    wireColumn[qm1Idx] = col + 1;
+    const col = Math.max(...Object.values(wireColumn));
+    for (const k in wireColumn) wireColumn[Number(k)] = col + 1;
     elements.push({
       id: hlUid('el'),
       gateId,
@@ -420,8 +489,8 @@ function processGateCall(
     if (!qbWr || !qmWr) { warnings.push(`Could not parse wires for ${gateId}`); return; }
     const qbIdx = registerWire(qbWr.id, 'qubit');
     const qmIdx = registerWire(qmWr.id, 'qumode');
-    if (!(qbIdx in wireColumn)) wireColumn[qbIdx] = 0;
-    if (!(qmIdx in wireColumn)) wireColumn[qmIdx] = 0;
+    if (!(qbIdx in wireColumn)) wireColumn[qbIdx] = Math.max(0, ...Object.values(wireColumn));
+    if (!(qmIdx in wireColumn)) wireColumn[qmIdx] = Math.max(0, ...Object.values(wireColumn));
 
     let parameterValues: Record<string, number> | undefined;
     if (hyqsimParams.length > 0 && paramVals.length > 0) {
@@ -438,9 +507,9 @@ function processGateCall(
       }
     }
 
-    const col = Math.max(wireColumn[qbIdx], wireColumn[qmIdx]);
-    wireColumn[qbIdx] = col + 1;
-    wireColumn[qmIdx] = col + 1;
+    // Use global max so the CD gate clears all intermediate single-qubit gates visually
+    const col = Math.max(...Object.values(wireColumn));
+    for (const k in wireColumn) wireColumn[Number(k)] = col + 1;
     // HyQSim convention: qubit is primary wire, qumode is target
     elements.push({
       id: hlUid('el'),
