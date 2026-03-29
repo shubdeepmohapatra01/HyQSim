@@ -195,7 +195,6 @@ export function kerrMatrix(kappa: number, fockDim: number): Matrix {
   }
   return K;
 }
-
 // Apply a matrix operator to a state
 export function applyOperator(state: StateVector, operator: Matrix): StateVector {
   return normalize(matVecMul(operator, state));

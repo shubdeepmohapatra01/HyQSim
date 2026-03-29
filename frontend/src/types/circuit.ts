@@ -206,10 +206,36 @@ export const QUMODE_GATES: Gate[] = [
 export const HYBRID_GATES: Gate[] = [
   {
     id: 'cdisp',
-    name: 'Controlled Disp.',
-    symbol: 'CD',
+    name: 'z-Cond. Displace.',
+    symbol: 'zCD',
     category: 'hybrid',
-    description: 'Qubit-controlled displacement: |0⟩⟨0|⊗D(α) + |1⟩⟨1|⊗D(-α)',
+    description: 'z-conditional displacement: |0⟩⟨0|⊗D(+α) + |1⟩⟨1|⊗D(-α). Direction follows σz eigenvalue.',
+    numQubits: 1,
+    numQumodes: 1,
+    parameters: [
+      { name: 'alpha_re', symbol: 'Re(α)', defaultValue: 1, min: -5, max: 5, step: 0.1 },
+      { name: 'alpha_im', symbol: 'Im(α)', defaultValue: 0, min: -5, max: 5, step: 0.1 },
+    ],
+  },
+  {
+    id: 'xcdisp',
+    name: 'x-Cond. Displace.',
+    symbol: 'xCD',
+    category: 'hybrid',
+    description: 'x-conditional displacement: |+⟩⟨+|⊗D(+α) + |-⟩⟨-|⊗D(-α). Direction follows σx eigenvalue.',
+    numQubits: 1,
+    numQumodes: 1,
+    parameters: [
+      { name: 'alpha_re', symbol: 'Re(α)', defaultValue: 1, min: -5, max: 5, step: 0.1 },
+      { name: 'alpha_im', symbol: 'Im(α)', defaultValue: 0, min: -5, max: 5, step: 0.1 },
+    ],
+  },
+  {
+    id: 'ycdisp',
+    name: 'y-Cond. Displace.',
+    symbol: 'yCD',
+    category: 'hybrid',
+    description: 'y-conditional displacement: |y+⟩⟨y+|⊗D(+α) + |y-⟩⟨y-|⊗D(-α). Direction follows σy eigenvalue.',
     numQubits: 1,
     numQumodes: 1,
     parameters: [
@@ -219,10 +245,10 @@ export const HYBRID_GATES: Gate[] = [
   },
   {
     id: 'cr',
-    name: 'Controlled Rot.',
+    name: 'Cond. Rotation',
     symbol: 'CR',
     category: 'hybrid',
-    description: 'Qubit-controlled phase rotation on qumode',
+    description: 'Conditional rotation: |0⟩⟨0|⊗R(+θ) + |1⟩⟨1|⊗R(-θ). Direction follows σz eigenvalue.',
     numQubits: 1,
     numQumodes: 1,
     parameters: [

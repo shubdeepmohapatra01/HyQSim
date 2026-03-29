@@ -221,13 +221,14 @@ export function applyTwoSubsystemGate(
   return { ...state, amplitudes: normalize(newAmplitudes) };
 }
 
-// Build controlled displacement gate matrix
-// |0⟩⟨0| ⊗ D(α) + |1⟩⟨1| ⊗ D(-α)
-export function controlledDisplacementMatrix(alpha: Complex, fockDim: number): Matrix {
+// Build z-conditional displacement gate matrix
+// |0⟩⟨0| ⊗ D(+α) + |1⟩⟨1| ⊗ D(-α)
+// Displacement direction follows the σz eigenvalue of the qubit.
+export function zConditionalDisplacementMatrix(alpha: Complex, fockDim: number): Matrix {
   const Dalpha = displacementMatrix(alpha, fockDim);
   const DminusAlpha = displacementMatrix({ re: -alpha.re, im: -alpha.im }, fockDim);
 
-  const dim = 2 * fockDim;  // qubit (2) x qumode (fockDim)
+  const dim = 2 * fockDim;
   const result: Matrix = [];
 
   for (let i = 0; i < dim; i++) {
@@ -239,14 +240,88 @@ export function controlledDisplacementMatrix(alpha: Complex, fockDim: number): M
       const inQumode = j % fockDim;
 
       if (outQubit !== inQubit) {
-        // Qubit must stay the same (no qubit flipping)
         result[i][j] = ZERO;
       } else if (outQubit === 0) {
-        // |0⟩ branch: apply D(α)
         result[i][j] = Dalpha[outQumode][inQumode];
       } else {
-        // |1⟩ branch: apply D(-α)
         result[i][j] = DminusAlpha[outQumode][inQumode];
+      }
+    }
+  }
+
+  return result;
+}
+
+// Build x-conditional displacement gate matrix
+// |+⟩⟨+| ⊗ D(+α) + |-⟩⟨-| ⊗ D(-α)
+// Displacement direction follows the σx eigenvalue of the qubit.
+// In the computational basis this gives:
+//   diagonal blocks:     (D(α) + D(-α)) / 2
+//   off-diagonal blocks: (D(α) - D(-α)) / 2
+export function xConditionalDisplacementMatrix(alpha: Complex, fockDim: number): Matrix {
+  const Dalpha = displacementMatrix(alpha, fockDim);
+  const DminusAlpha = displacementMatrix({ re: -alpha.re, im: -alpha.im }, fockDim);
+
+  const dim = 2 * fockDim;
+  const result: Matrix = [];
+  const half = complex(0.5);
+
+  for (let i = 0; i < dim; i++) {
+    result[i] = [];
+    for (let j = 0; j < dim; j++) {
+      const outQubit = Math.floor(i / fockDim);
+      const outQumode = i % fockDim;
+      const inQubit = Math.floor(j / fockDim);
+      const inQumode = j % fockDim;
+
+      const da = Dalpha[outQumode][inQumode];
+      const dm = DminusAlpha[outQumode][inQumode];
+      const dplus = mul(add(da, dm), half);   // (D(α)+D(-α))/2
+      const dneg  = mul(sub(da, dm), half);   // (D(α)-D(-α))/2
+
+      result[i][j] = outQubit === inQubit ? dplus : dneg;
+    }
+  }
+
+  return result;
+}
+
+// Build y-conditional displacement gate matrix
+// |y+⟩⟨y+| ⊗ D(+α) + |y-⟩⟨y-| ⊗ D(-α)
+// Displacement direction follows the σy eigenvalue of the qubit.
+// In the computational basis:
+//   diagonal blocks:          (D(α) + D(-α)) / 2
+//   off-diagonal block (0,1): -i (D(α) - D(-α)) / 2
+//   off-diagonal block (1,0): +i (D(α) - D(-α)) / 2
+export function yConditionalDisplacementMatrix(alpha: Complex, fockDim: number): Matrix {
+  const Dalpha = displacementMatrix(alpha, fockDim);
+  const DminusAlpha = displacementMatrix({ re: -alpha.re, im: -alpha.im }, fockDim);
+
+  const dim = 2 * fockDim;
+  const result: Matrix = [];
+  const half = complex(0.5);
+
+  for (let i = 0; i < dim; i++) {
+    result[i] = [];
+    for (let j = 0; j < dim; j++) {
+      const outQubit = Math.floor(i / fockDim);
+      const outQumode = i % fockDim;
+      const inQubit = Math.floor(j / fockDim);
+      const inQumode = j % fockDim;
+
+      const da = Dalpha[outQumode][inQumode];
+      const dm = DminusAlpha[outQumode][inQumode];
+      const dplus = mul(add(da, dm), half);   // (D(α)+D(-α))/2
+      const dneg  = mul(sub(da, dm), half);   // (D(α)-D(-α))/2
+
+      if (outQubit === inQubit) {
+        result[i][j] = dplus;
+      } else if (outQubit === 0) {
+        // top-right block: -i · dneg
+        result[i][j] = mul(complex(0, -1), dneg);
+      } else {
+        // bottom-left block: +i · dneg
+        result[i][j] = mul(complex(0, 1), dneg);
       }
     }
   }
@@ -290,11 +365,12 @@ export function jaynesCouplingMatrix(theta: number, fockDim: number): Matrix {
   return result;
 }
 
-// Build controlled rotation gate matrix
-// |0⟩⟨0| ⊗ I + |1⟩⟨1| ⊗ R(θ)
-export function controlledRotationMatrix(theta: number, fockDim: number): Matrix {
-  const I = identity(fockDim);
-  const R = rotationMatrix(theta, fockDim);
+// Build conditional rotation gate matrix
+// |0⟩⟨0| ⊗ R(+θ) + |1⟩⟨1| ⊗ R(-θ)
+// Rotation direction follows the σz eigenvalue of the qubit.
+export function conditionalRotationMatrix(theta: number, fockDim: number): Matrix {
+  const Rpos = rotationMatrix(theta, fockDim);
+  const Rneg = rotationMatrix(-theta, fockDim);
 
   const dim = 2 * fockDim;
   const result: Matrix = [];
@@ -310,9 +386,9 @@ export function controlledRotationMatrix(theta: number, fockDim: number): Matrix
       if (outQubit !== inQubit) {
         result[i][j] = ZERO;
       } else if (outQubit === 0) {
-        result[i][j] = I[outQumode][inQumode];
+        result[i][j] = Rpos[outQumode][inQumode];
       } else {
-        result[i][j] = R[outQumode][inQumode];
+        result[i][j] = Rneg[outQumode][inQumode];
       }
     }
   }
@@ -562,11 +638,21 @@ export function applyHybridGate(
   switch (gateName) {
     case 'cdisp': {
       const alpha: Complex = { re: params.alpha_re ?? 1, im: params.alpha_im ?? 0 };
-      gate = controlledDisplacementMatrix(alpha, fockDim);
+      gate = zConditionalDisplacementMatrix(alpha, fockDim);
+      break;
+    }
+    case 'xcdisp': {
+      const alpha: Complex = { re: params.alpha_re ?? 1, im: params.alpha_im ?? 0 };
+      gate = xConditionalDisplacementMatrix(alpha, fockDim);
+      break;
+    }
+    case 'ycdisp': {
+      const alpha: Complex = { re: params.alpha_re ?? 1, im: params.alpha_im ?? 0 };
+      gate = yConditionalDisplacementMatrix(alpha, fockDim);
       break;
     }
     case 'cr': {
-      gate = controlledRotationMatrix(params.theta ?? Math.PI / 4, fockDim);
+      gate = conditionalRotationMatrix(params.theta ?? Math.PI / 4, fockDim);
       break;
     }
     case 'jc': {
