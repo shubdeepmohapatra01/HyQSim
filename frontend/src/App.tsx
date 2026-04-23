@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import GatePalette from './components/GatePalette';
 import CircuitCanvas from './components/CircuitCanvas';
 import DisplayPanel from './components/DisplayPanel';
@@ -52,6 +52,30 @@ function App() {
 
   // Import/Export modal
   const [qiskitIOMode, setQiskitIOMode] = useState<'import' | 'export' | null>(null);
+
+  // Resizable display panel
+  const [displayPanelWidth, setDisplayPanelWidth] = useState(320);
+  const isResizing = useRef(false);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    const startX = e.clientX;
+    const startWidth = displayPanelWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return;
+      const newWidth = Math.min(Math.max(startWidth + (startX - ev.clientX), 240), 700);
+      setDisplayPanelWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      isResizing.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [displayPanelWidth]);
 
   // Check backend health on mount
   useEffect(() => {
@@ -407,7 +431,8 @@ function App() {
             <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-emerald-400 bg-clip-text text-transparent">
               HyQSim
             </h1>
-            <p className="text-sm text-slate-400">Hybrid Quantum Simulator</p>
+            <p className="text-sm text-slate-400">Hybrid CV-DV Quantum Circuit Simulator</p>
+            <p className="text-xs text-slate-500">Shubdeep Mohapatra · Yuan Liu · Huiyang Zhou </p>
           </div>
           <div className="flex items-center gap-6">
             {/* Backend toggle */}
@@ -496,6 +521,26 @@ function App() {
               </button>
             </div>
 
+            <a
+              href="https://github.com/shubdeepmohapatra01/HyQSim"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="View source on GitHub"
+              className="text-slate-400 hover:text-white transition-colors"
+            >
+              {/* GitHub mark */}
+              <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+                  0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+                  -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+                  .07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
+                  -.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27
+                  .68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12
+                  .51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48
+                  0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+              </svg>
+            </a>
+
             <div className="flex flex-col items-end gap-0.5">
               <span className="text-xs text-slate-500">
                 CV-DV Hybrid | Fock: {fockTruncation}
@@ -534,8 +579,15 @@ function App() {
           />
         </main>
 
+        {/* Resize handle */}
+        <div
+          onMouseDown={handleResizeStart}
+          className="w-1 flex-shrink-0 cursor-col-resize bg-slate-700 hover:bg-blue-500 active:bg-blue-400 transition-colors"
+          title="Drag to resize panel"
+        />
+
         {/* Right sidebar - Display Panel */}
-        <aside className="w-80 p-4 border-l border-slate-700 overflow-hidden">
+        <aside className="flex-shrink-0 p-4 border-l border-slate-700 overflow-hidden" style={{ width: displayPanelWidth }}>
           <DisplayPanel
             wires={wires}
             fockTruncation={fockTruncation}
